@@ -165,8 +165,6 @@ class SaveScriptDialog extends BaseDialog {
                     settingsRefreshHandler.run();
                 }
             });
-            // TODO: implement deep cascade
-            deleteDeepCascadeCheck.setEnabled(false);
         }
     }
 

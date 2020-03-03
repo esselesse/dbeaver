@@ -286,17 +286,13 @@ class ResultSetPersister {
         }
     }
 
-    private List<DataStatementInfo> prepareDeleteCascade(@NotNull DBRProgressMonitor monitor, DBDRowIdentifier rowIdentifier, List<DataStatementInfo> statements, boolean deepCascade) throws DBException {
-        List<DataStatementInfo> result = new ArrayList<>();
-
+    private void prepareDeleteDeepCascade(@NotNull DBRProgressMonitor monitor, DBDRowIdentifier rowIdentifier, List<DataStatementInfo> statements) throws DBException {
         DBSEntity entity = rowIdentifier.getEntity();
+
         Collection<? extends DBSEntityAssociation> references = entity.getReferences(monitor);
+
         if (references != null) {
-            // Now iterate over all statements and make cascade delete for each
             for (DataStatementInfo stat : statements) {
-
-                List<DataStatementInfo> cascadeStats = new ArrayList<>();
-
                 for (DBSEntityAssociation ref : references) {
                     if (ref instanceof DBSTableForeignKey && ((DBSTableForeignKey) ref).getDeleteRule() == DBSForeignKeyModifyRule.CASCADE) {
                         // It is already delete cascade - just ignore it
@@ -306,9 +302,59 @@ class ResultSetPersister {
                     if (ref instanceof DBSEntityReferrer) {
                         List<? extends DBSEntityAttributeRef> attrRefs = ((DBSEntityReferrer) ref).getAttributeReferences(monitor);
                         if (attrRefs != null) {
+                            List<DBDAttributeValue> refKeyValues = new ArrayList<>();
+                            for (DBSEntityAttributeRef attrRef : attrRefs) {
+                                DBSEntityAttribute attribute = attrRef.getAttribute();
+                                if (attribute != null) {
+                                    DBDAttributeValue value = DBDAttributeValue.getAttributeValue(stat.keyAttributes, attribute);
+                                    if (value == null) {
+                                        log.debug("Can't find attribute value for '" + attribute.getName() + "' recursive delete");
+                                    } else {
+                                        refKeyValues.add(value);
+                                    }
+                                }
+                            }
+
+                            if (refKeyValues.size() > 0) {
+                                DataStatementInfo cascadeStat = new DataStatementInfo(DBSManipulationType.DELETE, stat.row, refEntity);
+                                cascadeStat.keyAttributes.addAll(refKeyValues);
+                                statements.add(cascadeStat);
+//                                cascadeStats.add(cascadeStat);
+
+                                DBDRowIdentifier newRowIdentifier = new DBDRowIdentifier(refEntity, refKeyValues.get(0));
+                                prepareDeleteDeepCascade(monitor, newRowIdentifier, statements);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private List<DataStatementInfo> prepareDeleteCascade(@NotNull DBRProgressMonitor monitor, DBDRowIdentifier rowIdentifier, List<DataStatementInfo> statements, boolean deepCascade) throws DBException {
+        List<DataStatementInfo> result = new ArrayList<>();
+
+        DBSEntity entity = rowIdentifier.getEntity();
+        Collection<? extends DBSEntityAssociation> references = entity.getReferences(monitor);
+        if (references != null) {
+            if (!deepCascade) {
+                // Now iterate over all statements and make cascade delete for each
+                for (DataStatementInfo stat : statements) {
+
+                    List<DataStatementInfo> cascadeStats = new ArrayList<>();
+
+                    for (DBSEntityAssociation ref : references) {
+                        if (ref instanceof DBSTableForeignKey && ((DBSTableForeignKey) ref).getDeleteRule() == DBSForeignKeyModifyRule.CASCADE) {
+                        // It is already delete cascade - just ignore it
+                        continue;
+                    }
+                    DBSEntity refEntity = ref.getParentObject();
+                    if (ref instanceof DBSEntityReferrer) {
+                        List<? extends DBSEntityAttributeRef> attrRefs = ((DBSEntityReferrer) ref).getAttributeReferences(monitor);
+                        if (attrRefs != null) {
 
                             List<DBDAttributeValue> refKeyValues = new ArrayList<>();
-
+	
                             for (DBSEntityAttributeRef attrRef : attrRefs) {
                                 DBSEntityAttribute attribute = attrRef.getAttribute();
                                 if (attribute != null) {
@@ -326,7 +372,17 @@ class ResultSetPersister {
                                 DataStatementInfo cascadeStat = new DataStatementInfo(DBSManipulationType.DELETE, stat.row, refEntity);
                                 cascadeStat.keyAttributes.addAll(refKeyValues);
                                 cascadeStats.add(cascadeStat);
-/*
+
+                                Collection<? extends DBSEntityAssociation> references0 =refEntity.getReferences(monitor);
+                                for (DBSEntityAssociation ref0 : references0) {
+                                    if (ref instanceof DBSTableForeignKey && ((DBSTableForeignKey) ref).getDeleteRule() == DBSForeignKeyModifyRule.CASCADE) {
+                                        // It is already delete cascade - just ignore it
+                                        continue;
+                                    }
+                                    System.out.println(ref0);
+                                }
+
+                                /*
                                 System.out.println("DELETE! " + entity.getName());
                                 for (DBDAttributeValue kv : refKeyValues) {
                                     System.out.println("\tATTR: " + DBUtils.getObjectFullName(kv.getAttribute(), DBPEvaluationContext.UI) + "=" + kv.getValue());
@@ -338,6 +394,9 @@ class ResultSetPersister {
                 }
                 result.addAll(cascadeStats);
                 result.add(stat);
+               }
+            } else {
+                prepareDeleteDeepCascade(monitor, rowIdentifier, result);
             }
         }
         return result;
