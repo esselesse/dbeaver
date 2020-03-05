@@ -293,7 +293,6 @@ class ResultSetPersister {
     }
 
     private void deepDeleteCascade(DBRProgressMonitor monitor, List<DBDRowIdentifier> rowIdentifiers, List<DataStatementInfo> statements, String offset) throws DBException {
-        List<DataStatementInfo> result = new LinkedList<>();
         // for each row identifier
             // get reference tables
             // for each reference table
@@ -306,17 +305,18 @@ class ResultSetPersister {
             System.out.println(offset+"# "+entity.getName()+" -> "+rowIdentifier.getUniqueKey().getConstraintType().getName());
             Collection<? extends DBSEntityAssociation> references = entity.getReferences(monitor);
             for (DBSEntityAssociation reference : references) {
-                DBSEntity referenceEntity = reference.getParentObject();
-                // get ids
+                if (reference instanceof DBSEntityReferrer) {
+                    DBSEntity referenceEntity = reference.getParentObject();
+                    // get ids
 
-                List<DBDRowIdentifier> referenceRowIdentifiers = new ArrayList<>();
-                // fill referenceRowIdentifiers
-                DBDRowIdentifier identifier = new DBDRowIdentifier(referenceEntity, rowIdentifier.getUniqueKey());
-                referenceRowIdentifiers.add(identifier);
+                    List<DBDRowIdentifier> referenceRowIdentifiers = new ArrayList<>();
+                    // fill referenceRowIdentifiers
+                    DBDRowIdentifier identifier = new DBDRowIdentifier(referenceEntity, rowIdentifier.getUniqueKey());
+                    referenceRowIdentifiers.add(identifier);
 
-                if (entity instanceof DBSEntityReferrer) {
-	                List<? extends DBSEntityAttributeRef> attrRefs = ((DBSEntityReferrer) entity).getAttributeReferences(monitor);
+                    List<? extends DBSEntityAttributeRef> attrRefs = ((DBSEntityReferrer) reference).getAttributeReferences(monitor);
 	                if (attrRefs != null) {
+	                    List<DataStatementInfo> result = new ArrayList<>();
 	                    for (DataStatementInfo statement : statements) {
 	                        List<DBDAttributeValue> refKeyValues = new ArrayList<>();
 	                        for (DBSEntityAttributeRef attrRef : attrRefs) {
@@ -333,10 +333,11 @@ class ResultSetPersister {
 	                        if (refKeyValues.size() > 0) {
 	                            DataStatementInfo cascadeStat = new DataStatementInfo(DBSManipulationType.DELETE, statement.row, referenceEntity);
 	                            cascadeStat.keyAttributes.addAll(refKeyValues);
-	                            statements.add(cascadeStat);
-	                            System.out.println(String.format("%s -> %s %s %s", offset, statement.row, refKeyValues));
+	                            result.add(cascadeStat);
+	                            System.out.println(String.format("%s -> %s %s %s", offset, referenceEntity.getName(), statement.row, refKeyValues));
 	                        }
 	                    }
+	                    statements.addAll(result);
 	                }
 	                deepDeleteCascade(monitor, referenceRowIdentifiers, statements, " "+offset);
                 }
