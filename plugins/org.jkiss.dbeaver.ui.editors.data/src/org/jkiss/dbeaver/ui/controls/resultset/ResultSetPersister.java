@@ -38,6 +38,7 @@ import org.jkiss.dbeaver.model.struct.*;
 import org.jkiss.dbeaver.model.struct.rdb.DBSForeignKeyModifyRule;
 import org.jkiss.dbeaver.model.struct.rdb.DBSManipulationType;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTableForeignKey;
+import org.jkiss.dbeaver.model.struct.rdb.DBSTableForeignKeyColumn;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.jobs.DataSourceJob;
 import org.jkiss.dbeaver.ui.UIConfirmation;
@@ -300,6 +301,9 @@ class ResultSetPersister {
                 // prepare list of rowIdentifiers
                 // deepDeleteCascade for reference table
 
+        for (DataStatementInfo statement : statements) {
+            System.out.println("$ "+statement.entity.getName()+" "+statement.keyAttributes+" "+statement.updateAttributes);
+        }
         for (DBDRowIdentifier rowIdentifier : rowIdentifiers) {
             DBSEntity entity = rowIdentifier.getEntity();
             System.out.println(offset+"# "+entity.getName()+" -> "+rowIdentifier.getUniqueKey().getConstraintType().getName());
@@ -307,6 +311,36 @@ class ResultSetPersister {
             for (DBSEntityAssociation reference : references) {
                 if (reference instanceof DBSEntityReferrer) {
                     DBSEntity referenceEntity = reference.getParentObject();
+                    List<? extends DBSEntityAttributeRef> attrRefs = ((DBSEntityReferrer) reference).getAttributeReferences(monitor);
+                    if (attrRefs != null) {
+                        for (DBSEntityAttributeRef attrRef : attrRefs) {
+                            DBSTableForeignKeyColumn kc = (DBSTableForeignKeyColumn) attrRef;
+                            String x = kc.getReferencedColumn().getName();
+                            System.out.println(String.format("%s=>%s.%s to %s.%s", offset, entity.getName(), attrRef.getAttribute().getName(), referenceEntity.getName(), x));
+
+                            String checkColumnName = kc.getReferencedColumn().getName();
+                            String checkTableName = entity.getName();
+
+                            String insertColumnName = kc.getAttribute().getName();
+                            String insertTableName = referenceEntity.getName();
+
+                            List<DataStatementInfo> result = new ArrayList<>();
+                            for (DataStatementInfo statement : statements) {
+                                String tableName = statement.entity.getName();
+                                String columnName = statement.keyAttributes.get(0).getAttribute().getName();
+
+                                if (tableName.equalsIgnoreCase(checkTableName) && columnName.equalsIgnoreCase(checkColumnName)) {
+                                    Object value = statement.keyAttributes.get(0).getValue();
+
+//                                    DataStatementInfo cascadeStat = new DataStatementInfo(DBSManipulationType.DELETE, stat.row, referenceEntity);
+//                                    cascadeStat.keyAttributes.addAll(refKeyValues);
+//                                    cascadeStats.add(cascadeStat);
+//                                    DataStatementInfo newStatement = new DataStatementInfo(DBSManipulationType.DELETE, )
+                                    System.out.println(String.format("%sDELETING FROM %s BY %s=%s", offset, insertTableName, insertColumnName, value));
+                                }
+                            }
+                        }
+                    }
                     // get ids
 
                     List<DBDRowIdentifier> referenceRowIdentifiers = new ArrayList<>();
@@ -314,33 +348,11 @@ class ResultSetPersister {
                     DBDRowIdentifier identifier = new DBDRowIdentifier(referenceEntity, rowIdentifier.getUniqueKey());
                     referenceRowIdentifiers.add(identifier);
 
-                    List<? extends DBSEntityAttributeRef> attrRefs = ((DBSEntityReferrer) reference).getAttributeReferences(monitor);
-	                if (attrRefs != null) {
-	                    List<DataStatementInfo> result = new ArrayList<>();
-	                    for (DataStatementInfo statement : statements) {
-	                        List<DBDAttributeValue> refKeyValues = new ArrayList<>();
-	                        for (DBSEntityAttributeRef attrRef : attrRefs) {
-	                            DBSEntityAttribute attribute = attrRef.getAttribute();
-	                            if (attribute != null) {
-	                                DBDAttributeValue value = DBDAttributeValue.getAttributeValue(statement.keyAttributes, attribute);
-	                                if (value == null) {
-	                                    log.debug("Can't find attribute value for '" + attribute.getName() + "' recursive delete");
-	                                } else {
-	                                    refKeyValues.add(value);
-	                                }
-	                            }
-	                        }
-	                        if (refKeyValues.size() > 0) {
-	                            DataStatementInfo cascadeStat = new DataStatementInfo(DBSManipulationType.DELETE, statement.row, referenceEntity);
-	                            cascadeStat.keyAttributes.addAll(refKeyValues);
-	                            result.add(cascadeStat);
-	                            System.out.println(String.format("%s -> %s %s %s", offset, referenceEntity.getName(), statement.row, refKeyValues));
-	                        }
-	                    }
-	                    statements.addAll(result);
-	                }
-	                deepDeleteCascade(monitor, referenceRowIdentifiers, statements, " "+offset);
+                    deepDeleteCascade(monitor, referenceRowIdentifiers, statements, " "+offset);
                 }
+            }
+            if (references.size()==0) {
+                System.out.println(String.format("%s=>%s no references", offset, entity.getName()));
             }
         }
     }
