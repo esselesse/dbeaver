@@ -33,6 +33,7 @@ import org.jkiss.dbeaver.model.exec.*;
 import org.jkiss.dbeaver.model.impl.AbstractExecutionSource;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCDataSource;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
+import org.jkiss.dbeaver.model.sql.SQLQuery;
 import org.jkiss.dbeaver.model.struct.*;
 import org.jkiss.dbeaver.model.struct.rdb.DBSForeignKeyModifyRule;
 import org.jkiss.dbeaver.model.struct.rdb.DBSManipulationType;
@@ -291,9 +292,64 @@ class ResultSetPersister {
         }
     }
 
+    private void deepDeleteCascade(DBRProgressMonitor monitor, List<DBDRowIdentifier> rowIdentifiers, List<DataStatementInfo> statements, String offset) throws DBException {
+        List<DataStatementInfo> result = new LinkedList<>();
+        // for each row identifier
+            // get reference tables
+            // for each reference table
+                // get ids for reference table
+                // prepare list of rowIdentifiers
+                // deepDeleteCascade for reference table
+
+        for (DBDRowIdentifier rowIdentifier : rowIdentifiers) {
+            DBSEntity entity = rowIdentifier.getEntity();
+            System.out.println(offset+"# "+entity.getName()+" -> "+rowIdentifier.getUniqueKey().getConstraintType().getName());
+            Collection<? extends DBSEntityAssociation> references = entity.getReferences(monitor);
+            for (DBSEntityAssociation reference : references) {
+                DBSEntity referenceEntity = reference.getParentObject();
+                // get ids
+
+                List<DBDRowIdentifier> referenceRowIdentifiers = new ArrayList<>();
+                // fill referenceRowIdentifiers
+                DBDRowIdentifier identifier = new DBDRowIdentifier(referenceEntity, rowIdentifier.getUniqueKey());
+                referenceRowIdentifiers.add(identifier);
+
+                if (entity instanceof DBSEntityReferrer) {
+	                List<? extends DBSEntityAttributeRef> attrRefs = ((DBSEntityReferrer) entity).getAttributeReferences(monitor);
+	                if (attrRefs != null) {
+	                    for (DataStatementInfo statement : statements) {
+	                        List<DBDAttributeValue> refKeyValues = new ArrayList<>();
+	                        for (DBSEntityAttributeRef attrRef : attrRefs) {
+	                            DBSEntityAttribute attribute = attrRef.getAttribute();
+	                            if (attribute != null) {
+	                                DBDAttributeValue value = DBDAttributeValue.getAttributeValue(statement.keyAttributes, attribute);
+	                                if (value == null) {
+	                                    log.debug("Can't find attribute value for '" + attribute.getName() + "' recursive delete");
+	                                } else {
+	                                    refKeyValues.add(value);
+	                                }
+	                            }
+	                        }
+	                        if (refKeyValues.size() > 0) {
+	                            DataStatementInfo cascadeStat = new DataStatementInfo(DBSManipulationType.DELETE, statement.row, referenceEntity);
+	                            cascadeStat.keyAttributes.addAll(refKeyValues);
+	                            statements.add(cascadeStat);
+	                            System.out.println(String.format("%s -> %s %s %s", offset, statement.row, refKeyValues));
+	                        }
+	                    }
+	                }
+	                deepDeleteCascade(monitor, referenceRowIdentifiers, statements, " "+offset);
+                }
+            }
+        }
+    }
+
     private List<DataStatementInfo> prepareDeleteCascade(@NotNull DBRProgressMonitor monitor, DBDRowIdentifier rowIdentifier, List<DataStatementInfo> statements, boolean deepCascade) throws DBException {
         List<DataStatementInfo> result = new ArrayList<>();
 
+        deepDeleteCascade(monitor, Arrays.asList(rowIdentifier), statements, "");
+
+        /**
         DBSEntity entity = rowIdentifier.getEntity();
         Collection<? extends DBSEntityAssociation> references = entity.getReferences(monitor);
         if (references != null) {
@@ -328,20 +384,64 @@ class ResultSetPersister {
                                 cascadeStats.add(cascadeStat);
 
                                 if (deepCascade) {
-                                    String key = attrRefs.get(0).getAttribute().getName();
-                                    String ids = String.join(",", refKeyValues.stream().map(v -> {return v.getValue().toString();}).collect(Collectors.toList()));
-                                    String sql = String.format("SELECT * FROM %s WHERE %s IN (%s)", refEntity.getName(), key, ids);
-
+                                    
                                     DBCExecutionContext executionContext = viewer.getContainer().getExecutionContext();
                                     if (executionContext == null) {
                                         throw new DBCException("No execution context");
                                     }
                                     DBCSession session = executionContext.openSession(monitor, DBCExecutionPurpose.META, "DEEP_CASCADE");
-                                    DBCStatement statement = session.prepareStatement(DBCStatementType.QUERY, sql, false, false, false);
-                                    statement.executeStatement();
-                                    DBCResultSet resultSet = statement.openResultSet();
+                                    DBSDataContainer dataContainer = (DBSDataContainer) refEntity;
+                                    ExecutionSource source = new ExecutionSource(dataContainer);
+                                    
+                                    DBDDataReceiver receiver = new DBDDataReceiver() {
+                                        @Override
+                                        public void fetchStart(DBCSession session, DBCResultSet resultSet, long offset, long maxRows) throws DBCException {
+
+                                        }
+
+                                        @Override
+                                        public void fetchRow(DBCSession session, DBCResultSet resultSet) throws DBCException {
+                                            System.out.println(resultSet.getAttributeValue(1));
+                                        }
+
+                                        @Override
+                                        public void fetchEnd(DBCSession session, DBCResultSet resultSet) throws DBCException {
+
+                                        }
+
+                                        @Override
+                                        public void close() {
+
+                                        }
+                                    };
+
+                                    DBDDataFilter filter = new DBDDataFilter();
+                                    List<DBDAttributeConstraint> cons = new ArrayList<>();
+                                    for (DBDAttributeValue value : refKeyValues) {
+                                        DBDAttributeConstraint con = new DBDAttributeConstraint(value.getAttribute(), 0);
+                                        con.setValue(value.getValue());
+                                        con.setVisible(true);
+                                        con.setVisualPosition(1);
+                                        con.setOperator(DBCLogicalOperator.EQUALS);
+                                        System.out.println("F "+con.hasCondition());
+                                    	System.out.println("C "+con);
+                                        cons.add(con);
+                                    }
+                                    filter.addConstraints(cons);
+                                    System.out.println(filter.hasConditions());
+                                    String where = filter.getWhere();
+
+                                    DBCStatistics stats = dataContainer.readData(source, session, receiver, filter, -1, -1, DBSDataContainer.FLAG_NONE, Integer.MAX_VALUE);
 
                                     
+                                    String x = stats.getQueryText();
+                                    System.out.println("X "+x);
+//                                    DBCStatement statement = session.prepareStatement(DBCStatementType.QUERY, sql, false, false, false);
+//                                    statement.executeStatement();
+//                                    DBCResultSet resultSet = statement.openResultSet();
+
+                                    
+                                    String t = "123";
                                 }
                             }
                         }
@@ -351,6 +451,7 @@ class ResultSetPersister {
                 result.add(stat);
             }
         }
+        **/
         return result;
     }
 
