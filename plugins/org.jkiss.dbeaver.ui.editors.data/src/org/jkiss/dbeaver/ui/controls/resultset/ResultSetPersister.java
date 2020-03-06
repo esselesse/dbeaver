@@ -30,6 +30,7 @@ import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.data.*;
 import org.jkiss.dbeaver.model.edit.DBEPersistAction;
 import org.jkiss.dbeaver.model.exec.*;
+import org.jkiss.dbeaver.model.exec.jdbc.JDBCResultSet;
 import org.jkiss.dbeaver.model.impl.AbstractExecutionSource;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCDataSource;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
@@ -302,12 +303,12 @@ class ResultSetPersister {
                 // deepDeleteCascade for reference table
 
         for (DataStatementInfo statement : statements) {
-            System.out.println("$ "+statement.entity.getName()+" "+statement.keyAttributes+" "+statement.updateAttributes);
+            System.out.println(offset+"$ "+statement.entity.getName()+" "+statement.keyAttributes);
         }
 
         for (DBDRowIdentifier rowIdentifier : rowIdentifiers) {
             DBSEntity entity = rowIdentifier.getEntity();
-            System.out.println(offset+"# "+entity.getName()+" -> "+rowIdentifier.getUniqueKey().getConstraintType().getName());
+//            System.out.println(offset+"# "+entity.getName()+" -> "+rowIdentifier.getUniqueKey().getConstraintType().getName());
             Collection<? extends DBSEntityAssociation> references = entity.getReferences(monitor);
             List<DataStatementInfo> result = new ArrayList<>();
             for (DBSEntityAssociation reference : references) {
@@ -317,8 +318,6 @@ class ResultSetPersister {
                     if (attrRefs != null) {
                         for (DBSEntityAttributeRef attrRef : attrRefs) {
                             DBSTableForeignKeyColumn kc = (DBSTableForeignKeyColumn) attrRef;
-                            String x = kc.getReferencedColumn().getName();
-                            System.out.println(String.format("%s=>%s.%s to %s.%s", offset, entity.getName(), attrRef.getAttribute().getName(), referenceEntity.getName(), x));
 
                             String checkColumnName = kc.getReferencedColumn().getName();
                             String checkTableName = entity.getName();
@@ -326,66 +325,20 @@ class ResultSetPersister {
                             String deleteColumnName = kc.getAttribute().getName();
                             String deleteTableName = referenceEntity.getName();
 
-                            int i = 0;
-
                             for (DataStatementInfo statement : statements) {
                                 String tableName = statement.entity.getName();
-                                DBSAttributeBase attribute = statement.keyAttributes.get(0).getAttribute();
-                                String columnName = attribute.getName();
 
-                                if (tableName.equalsIgnoreCase(checkTableName) && columnName.equalsIgnoreCase(checkColumnName)) {
-                                    Object value = statement.keyAttributes.get(0).getValue();
-//                                    DataStatementInfo cascadeStat = new DataStatementInfo(DBSManipulationType.DELETE, stat.row, referenceEntity);
-//                                    cascadeStat.keyAttributes.addAll(refKeyValues);
-//                                    cascadeStats.add(cascadeStat);
-//                                    DataStatementInfo newStatement = new DataStatementInfo(DBSManipulationType.DELETE, )
-
-                                    DBSDataContainer dataContainer = (DBSDataContainer) referenceEntity;
-                                    ExecutionSource source = new ExecutionSource(dataContainer);
-
-                                    DBDDataReceiver receiver = new DBDDataReceiver() {
-                                        int i = 0;
-                                        @Override
-                                        public void fetchStart(DBCSession session, DBCResultSet resultSet, long offset, long maxRows) throws DBCException {
-                                        }
-                                        @Override
-                                        public void fetchRow(DBCSession session, DBCResultSet resultSet) throws DBCException {
-                                            ResultSetRow row = new ResultSetRow(i++, new Object[] {resultSet.getAttributeValue(1)});
-                                            DataStatementInfo info = new DataStatementInfo(DBSManipulationType.DELETE, row, referenceEntity);
-                                            result.add(info);
-                                            System.out.println((++i) + " VALUE " + resultSet.getAttributeValue(1));
-                                        }
-                                        @Override
-                                        public void fetchEnd(DBCSession session, DBCResultSet resultSet) throws DBCException {
-                                        }
-                                        @Override
-                                        public void close() {
-                                        }
-                                    };
-                                    DBDDataFilter filter = new DBDDataFilter();
-                                    List<DBDAttributeConstraint> cons = new ArrayList<>();
-
-                                    DBDAttributeConstraint con = new DBDAttributeConstraint(attribute, i);
-                                    con.setValue(value);
-                                    con.setVisible(true);
-                                    con.setVisualPosition(i++);
-                                    con.setOperator(DBCLogicalOperator.EQUALS);
-                                    cons.add(con);
-
-                                    filter.addConstraints(cons);
-
-                                    DBCExecutionContext executionContext = viewer.getContainer().getExecutionContext();
-                                    DBCSession session = executionContext.openSession(monitor, DBCExecutionPurpose.META, "DEEP_CASCADE");
-                                    DBCStatistics stats = dataContainer.readData(source, session, receiver, filter, -1, -1, DBSDataContainer.FLAG_NONE, Integer.MAX_VALUE);
-                                    System.out.println("--> "+stats.getQueryText().replace('\n', ' '));
-
-                                    System.out.println(String.format("%sDELETING FROM %s BY %s=%s", offset, deleteTableName, deleteColumnName, value));
+                                for (DBDAttributeValue attribute : statement.keyAttributes) {
+                                    String columnName = attribute.getAttribute().getName();
+                                    if (tableName.equalsIgnoreCase(checkTableName) && columnName.equalsIgnoreCase(checkColumnName)) {
+                                        Object value = attribute.getValue();
+                                        List<DataStatementInfo> infos = createDeleteStatement(monitor, referenceEntity, kc.getAttribute(), deleteTableName, deleteColumnName, value);
+                                        result.addAll(infos);
+                                    }
                                 }
                             }
                         }
                     }
-                    // get ids
-
                     List<DBDRowIdentifier> referenceRowIdentifiers = new ArrayList<>();
                     // fill referenceRowIdentifiers
                     DBDRowIdentifier identifier = new DBDRowIdentifier(referenceEntity, rowIdentifier.getUniqueKey());
@@ -401,7 +354,67 @@ class ResultSetPersister {
         }
     }
 
-    private List<DataStatementInfo> prepareDeleteCascade(@NotNull DBRProgressMonitor monitor, DBDRowIdentifier rowIdentifier, List<DataStatementInfo> statements, boolean deepCascade) throws DBException {
+    private List<DataStatementInfo> createDeleteStatement(DBRProgressMonitor monitor, DBSEntity entity, DBSAttributeBase attribute, String deleteTableName, String deleteColumnName, Object value) throws DBCException {
+        DBSDataContainer dataContainer = (DBSDataContainer) entity;
+        ExecutionSource source = new ExecutionSource(dataContainer);
+
+        List<DataStatementInfo> result = new ArrayList<>();
+
+        DBDDataReceiver receiver = new DBDDataReceiver() {
+
+            @Override
+            public void fetchStart(DBCSession session, DBCResultSet resultSet, long offset, long maxRows) throws DBCException {
+            }
+
+            @Override
+            public void fetchRow(DBCSession session, DBCResultSet resultSet) throws DBCException {
+                JDBCResultSet rs = (JDBCResultSet) resultSet;
+
+                for (int i = 0;i<rs.getMeta().getAttributes().size();i++) {
+                    DBSAttributeBase b = rs.getMeta().getAttributes().get(i);
+                    if (b.getName().equalsIgnoreCase(deleteColumnName)) {
+                        Object v = resultSet.getAttributeValue(i);
+
+                        DBDAttributeValue _v = new DBDAttributeValue(b, v);
+
+                        ResultSetRow row = new ResultSetRow(i++, new Object[] {v});
+                        DataStatementInfo statement = new DataStatementInfo(DBSManipulationType.DELETE, row, entity);
+                        statement.keyAttributes.add(_v);
+                        result.add(statement);
+                        break;
+                    }
+                }
+            }
+
+            @Override
+            public void fetchEnd(DBCSession session, DBCResultSet resultSet) throws DBCException {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+
+        DBDDataFilter filter = new DBDDataFilter();
+        List<DBDAttributeConstraint> cons = new ArrayList<>();
+
+        DBDAttributeConstraint con = new DBDAttributeConstraint(attribute, 0);
+        con.setValue(value);
+        con.setVisible(true);
+        con.setVisualPosition(0);
+        con.setOperator(DBCLogicalOperator.EQUALS);
+        cons.add(con);
+
+        filter.addConstraints(cons);
+
+        DBCExecutionContext executionContext = viewer.getContainer().getExecutionContext();
+        DBCSession session = executionContext.openSession(monitor, DBCExecutionPurpose.META, "DEEP_CASCADE");
+        DBCStatistics stats = dataContainer.readData(source, session, receiver, filter, -1, -1, DBSDataContainer.FLAG_NONE, Integer.MAX_VALUE);
+
+        return result;
+    }
+
+	private List<DataStatementInfo> prepareDeleteCascade(@NotNull DBRProgressMonitor monitor, DBDRowIdentifier rowIdentifier, List<DataStatementInfo> statements, boolean deepCascade) throws DBException {
         List<DataStatementInfo> result = new ArrayList<>();
 
         deepDeleteCascade(monitor, Arrays.asList(rowIdentifier), statements, "");
