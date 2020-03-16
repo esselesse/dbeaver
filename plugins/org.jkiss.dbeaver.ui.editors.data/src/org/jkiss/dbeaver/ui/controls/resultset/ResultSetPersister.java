@@ -302,8 +302,14 @@ class ResultSetPersister {
                 // prepare list of rowIdentifiers
                 // deepDeleteCascade for reference table
 
-        for (DataStatementInfo statement : statements) {
-            System.out.println(offset+"$ "+statement.entity.getName()+" "+statement.keyAttributes);
+//        for (DataStatementInfo statement : statements) {
+//            System.out.println(offset+"$ "+statement.entity.getName()+" "+statement.keyAttributes);
+//        }
+
+        for (DBDRowIdentifier row : rowIdentifiers) {
+            for (DBDAttributeBinding binding : row.getAttributes()) {
+                System.out.println(String.format("%s=> %s %s %s", offset, row.getEntity().getName(), binding.getAttribute().getName(), binding.getValueHandler().getValueDisplayString(column, value, format)));
+            }
         }
 
         for (DBDRowIdentifier rowIdentifier : rowIdentifiers) {
@@ -332,7 +338,7 @@ class ResultSetPersister {
                                     String columnName = attribute.getAttribute().getName();
                                     if (tableName.equalsIgnoreCase(checkTableName) && columnName.equalsIgnoreCase(checkColumnName)) {
                                         Object value = attribute.getValue();
-                                        List<DataStatementInfo> infos = createDeleteStatement(monitor, referenceEntity, kc.getAttribute(), deleteTableName, deleteColumnName, value);
+                                        List<DataStatementInfo> infos = createDeleteStatement(offset, monitor, referenceEntity, kc.getAttribute(), deleteTableName, deleteColumnName, value);
                                         result.addAll(infos);
                                     }
                                 }
@@ -354,7 +360,7 @@ class ResultSetPersister {
         }
     }
 
-    private List<DataStatementInfo> createDeleteStatement(DBRProgressMonitor monitor, DBSEntity entity, DBSAttributeBase attribute, String deleteTableName, String deleteColumnName, Object value) throws DBCException {
+    private List<DataStatementInfo> createDeleteStatement(String offset, DBRProgressMonitor monitor, DBSEntity entity, DBSAttributeBase attribute, String deleteTableName, String deleteColumnName, Object value) throws DBCException {
         DBSDataContainer dataContainer = (DBSDataContainer) entity;
         ExecutionSource source = new ExecutionSource(dataContainer);
 
@@ -371,18 +377,20 @@ class ResultSetPersister {
                 JDBCResultSet rs = (JDBCResultSet) resultSet;
 
                 for (int i = 0;i<rs.getMeta().getAttributes().size();i++) {
-                    DBSAttributeBase b = rs.getMeta().getAttributes().get(i);
-                    if (b.getName().equalsIgnoreCase(deleteColumnName)) {
-                        Object v = resultSet.getAttributeValue(i);
 
-                        DBDAttributeValue _v = new DBDAttributeValue(b, v);
-
-                        ResultSetRow row = new ResultSetRow(i++, new Object[] {v});
-                        DataStatementInfo statement = new DataStatementInfo(DBSManipulationType.DELETE, row, entity);
-                        statement.keyAttributes.add(_v);
-                        result.add(statement);
-                        break;
-                    }
+//                    System.out.println(String.format("%sDELETE ==> %s %s", offset, rs.getMeta().getAttributes().get(i), resultSet.getAttributeValue(i)));
+//                    DBSAttributeBase b = rs.getMeta().getAttributes().get(i);
+//                    if (b.getName().equalsIgnoreCase(deleteColumnName)) {
+//                        Object v = resultSet.getAttributeValue(i);
+//
+//                        DBDAttributeValue _v = new DBDAttributeValue(b, v);
+//
+//                        ResultSetRow row = new ResultSetRow(i++, new Object[] {v});
+//                        DataStatementInfo statement = new DataStatementInfo(DBSManipulationType.DELETE, row, entity);
+//                        statement.keyAttributes.add(_v);
+//                        result.add(statement);
+//                        break;
+//                    }
                 }
             }
 
