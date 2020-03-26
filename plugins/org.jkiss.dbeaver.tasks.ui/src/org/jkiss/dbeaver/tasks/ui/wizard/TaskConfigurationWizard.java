@@ -143,7 +143,7 @@ public abstract class TaskConfigurationWizard extends BaseWizard implements IWor
 
     protected void addTaskConfigPages() {
         // If we are in task edit mode then add special first page.
-        // Do not add it if this is an new task wizard (because this page is added separately)
+        // Do not add it if this is an ew task wizard (because this page is added separately)
         if (isCurrentTaskSaved()) {
             // Task editor. Add first page
             addPage(new TaskConfigurationWizardPageTask(getCurrentTask()));
@@ -227,7 +227,7 @@ public abstract class TaskConfigurationWizard extends BaseWizard implements IWor
                 task.getProject().getTaskManager().runTask(task, executor, Collections.emptyMap());
             }
         } catch (DBException e) {
-            DBWorkbench.getPlatformUI().showError(Messages.TaskConfigurationWizard___Task_run_error, e.getMessage(), e);
+        	DBWorkbench.getPlatformUI().showError(TaskUIMessages.task_configuration_wizard_run_task_error, e.getMessage(), e);
             return false;
         }
         return true;
@@ -243,7 +243,7 @@ public abstract class TaskConfigurationWizard extends BaseWizard implements IWor
             // Create new task
             DBTTaskType taskType = getTaskType();
             if (taskType == null) {
-                DBWorkbench.getPlatformUI().showError(Messages.TaskConfigurationWizard___no_task_type, Messages.TaskConfigurationWizard___cant_find_task_type + getTaskTypeId());
+                DBWorkbench.getPlatformUI().showError(TaskUIMessages.task_configuration_wizard_save_task_error_header, TaskUIMessages.task_configuration_wizard_save_task_error_text + getTaskTypeId());
                 return;
             }
             EditTaskConfigurationDialog dialog = new EditTaskConfigurationDialog(getContainer().getShell(), getProject(), taskType);
@@ -277,13 +277,13 @@ public abstract class TaskConfigurationWizard extends BaseWizard implements IWor
         try {
             theTask.getProject().getTaskManager().updateTaskConfiguration(theTask);
         } catch (DBException e) {
-            DBWorkbench.getPlatformUI().showError(Messages.TaskConfigurationWizard___task_save_error, Messages.TaskConfigurationWizard___error_saving_task_config, e);
+            DBWorkbench.getPlatformUI().showError(TaskUIMessages.task_configuration_wizard_save_configuration_to_task_task_save_error_header, TaskUIMessages.task_configuration_wizard_save_configuration_to_task_task_save_error_text, e);
         }
     }
 
     public void createTaskSaveGroup(Composite parent) {
         Group taskGroup = UIUtils.createControlGroup(
-            parent, "Task", 2, GridData.HORIZONTAL_ALIGN_BEGINNING | GridData.VERTICAL_ALIGN_BEGINNING, 0); //$NON-NLS-1$
+            parent, "", 2, GridData.HORIZONTAL_ALIGN_BEGINNING | GridData.VERTICAL_ALIGN_BEGINNING, 0); //$NON-NLS-1$
         createTaskSaveButtons(taskGroup, false, 1);
     }
 
@@ -302,7 +302,7 @@ public abstract class TaskConfigurationWizard extends BaseWizard implements IWor
             panel.setLayout(new GridLayout(horizontal ? (supportsVariables ? 3 : 2) : 1, false));
 
             if (supportsVariables) {
-                UIUtils.createDialogButton(panel, Messages.TaskConfigurationWizard___variables, new SelectionAdapter() {
+                UIUtils.createDialogButton(panel, TaskUIMessages.task_configuration_wizard_create_task_save_buttons_variables, new SelectionAdapter() {
                     @Override
                     public void widgetSelected(SelectionEvent e) {
                         configureVariables();
@@ -310,19 +310,19 @@ public abstract class TaskConfigurationWizard extends BaseWizard implements IWor
                 });
             }
 
-            saveAsTaskButton = UIUtils.createDialogButton(panel, Messages.TaskConfigurationWizard___save_task, new SelectionAdapter() {
+            saveAsTaskButton = UIUtils.createDialogButton(panel, TaskUIMessages.task_configuration_wizard_create_task_save_buttons_save_task, new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {
                     saveTask();
                 }
             });
-            Link tasksLink = UIUtils.createLink(panel, Messages.TaskConfigurationWizard___open_tasks_view, new SelectionAdapter() {
+            Link tasksLink = UIUtils.createLink(panel, TaskUIMessages.task_configuration_wizard_create_task_save_buttons_save_open_task_view, new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {
                     try {
                         UIUtils.getActiveWorkbenchWindow().getActivePage().showView(DatabaseTasksView.VIEW_ID);
                     } catch (PartInitException e1) {
-                        DBWorkbench.getPlatformUI().showError(Messages.TaskConfigurationWizard___show_view, Messages.TaskConfigurationWizard___error_opening_DB_tasks_view, e1);
+                        DBWorkbench.getPlatformUI().showError(TaskUIMessages.task_configuration_wizard_create_task_save_buttons_save_show_view_error_header, TaskUIMessages.task_configuration_wizard_create_task_save_buttons_save_task_show_view_error_text, e1);
                     }
                 }
             });
