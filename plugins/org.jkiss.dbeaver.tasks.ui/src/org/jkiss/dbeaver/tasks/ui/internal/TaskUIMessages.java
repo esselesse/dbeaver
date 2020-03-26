@@ -22,7 +22,26 @@ import org.eclipse.osgi.util.NLS;
 public class TaskUIMessages extends NLS {
 	static final String BUNDLE_NAME = "org.jkiss.dbeaver.tasks.ui.internal.TaskUIMessages"; //$NON-NLS-1$
 
-	public static String task_config_wizard_group_task_label;
+	public static String task_configuration_wizard_create_task_save_buttons_save_open_task_view;
+
+	public static String task_configuration_wizard_create_task_save_buttons_save_show_view_error_header;
+
+	public static String task_configuration_wizard_create_task_save_buttons_save_task;
+
+	public static String task_configuration_wizard_create_task_save_buttons_save_task_show_view_error_text;
+
+	public static String task_configuration_wizard_create_task_save_buttons_variables;
+
+	public static String task_configuration_wizard_run_task_error;
+
+	public static String task_configuration_wizard_save_configuration_to_task_task_save_error_header;
+
+	public static String task_configuration_wizard_save_configuration_to_task_task_save_error_text;
+
+	public static String task_configuration_wizard_save_task_error_header;
+
+	public static String task_configuration_wizard_save_task_error_text;
+
 
 	static {
 		// initialize resource bundle
@@ -32,3 +51,4 @@ public class TaskUIMessages extends NLS {
 	private TaskUIMessages() {
 	}
 }
+
